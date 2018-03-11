@@ -3,18 +3,14 @@ package ecs
 // A System implements logic for processing entities possessing components of
 // the same aspects as the system. A System should iterate over its Entities on
 // `Update`, in any way suitable for the current implementation.
-//
-// By convention, systems provide an Add method for adding entities and their
-// associated components to the system; e.g.
-//
-//    Add(basic *ecs.BasicEntity, collision *CollisionComponent, space *SpaceComponent)
 type System interface {
 	// Update updates the system. It is invoked by the engine once every frame,
 	// with dt being the duration since the previous update.
-	Update(dt float32)
-
-	// Remove removes the given entity from the system.
-	Remove(e BasicEntity)
+	Update(dt float32, entities []Identifier)
+	// CompnentFilter tells the world which components this system wants to act
+	// on. Any entity that the system should act on should return true, and
+	// all other entities should return false.
+	ComponentFilter(Identifier) bool
 }
 
 // Prioritizer specifies the priority of systems.

@@ -7,96 +7,150 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type MySystemOneEntity struct {
-	e  *BasicEntity
-	c1 *MyComponent1
+type MySystemOneAble interface {
+	Identifier
+	MyComponent1Face
 }
-
-type MySystemOne struct {
-	entities []MySystemOneEntity
+type NotSystemOneAble interface {
+	NotSystem1Face
 }
+type MySystemOne struct{}
 
 func (*MySystemOne) Priority() int { return 0 }
 func (*MySystemOne) New(*World)    {}
-func (sys *MySystemOne) Update(dt float32) {
-	for _, e := range sys.entities {
-		e.c1.A = 5
+func (*MySystemOne) Update(dt float32, entities []Identifier) {
+	for _, e := range entities {
+		entity := e.(MySystemOneAble)
+		entity.GetMyComponent1().A++
 	}
 }
-func (*MySystemOne) Remove(e BasicEntity) {}
-func (sys *MySystemOne) Add(e *BasicEntity, c1 *MyComponent1) {
-	sys.entities = append(sys.entities, MySystemOneEntity{e, c1})
+func (*MySystemOne) ComponentFilter(id Identifier) bool {
+	if _, not := id.(NotSystemOneAble); not {
+		return false
+	}
+	_, ok := id.(MySystemOneAble)
+	return ok
 }
 
-type MySystemOneTwoEntity struct {
-	e  *BasicEntity
-	c1 *MyComponent1
-	c2 *MyComponent2
+type MySystemOneTwoAble interface {
+	Identifier
+	MyComponent1Face
+	MyComponent2Face
 }
-
-type MySystemOneTwo struct {
-	entities []MySystemOneTwoEntity
+type NotSystemOneTwoAble interface {
+	NotSystem12Face
 }
+type MySystemOneTwo struct{}
 
 func (*MySystemOneTwo) Priority() int { return 0 }
 func (*MySystemOneTwo) New(*World)    {}
-func (sys *MySystemOneTwo) Update(dt float32) {
-	for _, e := range sys.entities {
-		if e.c1 == nil {
-			return
-		}
-
-		if e.c2 == nil {
-			return
-		}
+func (*MySystemOneTwo) Update(dt float32, entities []Identifier) {
+	for _, e := range entities {
+		entity := e.(MySystemOneTwoAble)
+		entity.GetMyComponent1().B++
+		entity.GetMyComponent2().D++
 	}
 }
-func (sys *MySystemOneTwo) Remove(e BasicEntity) {
-	delete := -1
-	for index, entity := range sys.entities {
-		if entity.e.ID() == e.ID() {
-			delete = index
-		}
+func (*MySystemOneTwo) ComponentFilter(id Identifier) bool {
+	if _, not := id.(NotSystemOneTwoAble); not {
+		return false
 	}
-	if delete >= 0 {
-		sys.entities = append(sys.entities[:delete], sys.entities[delete+1:]...)
+	_, ok := id.(MySystemOneTwoAble)
+	return ok
+}
+
+type MySystemTwoAble interface {
+	Identifier
+	MyComponent2Face
+}
+type NotSystemTwoAble interface {
+	NotSystem2Face
+}
+type MySystemTwo struct{}
+
+func (*MySystemTwo) Priority() int { return 0 }
+func (*MySystemTwo) New(*World)    {}
+func (*MySystemTwo) Update(dt float32, entities []Identifier) {
+	for _, e := range entities {
+		entity := e.(MySystemTwoAble)
+		entity.GetMyComponent2().C++
 	}
 }
-func (sys *MySystemOneTwo) Add(e *BasicEntity, c1 *MyComponent1, c2 *MyComponent2) {
-	sys.entities = append(sys.entities, MySystemOneTwoEntity{e, c1, c2})
-}
-
-type MyEntity1 struct {
-	BasicEntity
-	MyComponent1
-}
-
-type MyEntity2 struct {
-	BasicEntity
-	MyComponent2
-}
-
-type MyEntity12 struct {
-	BasicEntity
-	MyComponent1
-	MyComponent2
+func (*MySystemTwo) ComponentFilter(id Identifier) bool {
+	if _, not := id.(NotSystemTwoAble); not {
+		return false
+	}
+	_, ok := id.(MySystemTwoAble)
+	return ok
 }
 
 type MyComponent1 struct {
 	A, B int
 }
 
+func (c *MyComponent1) GetMyComponent1() *MyComponent1 {
+	return c
+}
+
+type MyComponent1Face interface {
+	GetMyComponent1() *MyComponent1
+}
+
 type MyComponent2 struct {
 	C, D int
 }
 
+func (c *MyComponent2) GetMyComponent2() *MyComponent2 {
+	return c
+}
+
+type MyComponent2Face interface {
+	GetMyComponent2() *MyComponent2
+}
+
+type NotSystem1Component struct{}
+
+func (c *NotSystem1Component) GetNotSystem1Component() *NotSystem1Component {
+	return c
+}
+
+type NotSystem1Face interface {
+	GetNotSystem1Component() *NotSystem1Component
+}
+
+type NotSystem12Component struct{}
+
+func (c *NotSystem12Component) GetNotSystem12Component() *NotSystem12Component {
+	return c
+}
+
+type NotSystem12Face interface {
+	GetNotSystem12Component() *NotSystem12Component
+}
+
+type NotSystem2Component struct{}
+
+func (c *NotSystem2Component) GetNotSystem2Component() *NotSystem2Component {
+	return c
+}
+
+type NotSystem2Face interface {
+	GetNotSystem2Component() *NotSystem2Component
+}
+
 // TestCreateEntity ensures IDs which are created, are unique
 func TestCreateEntity(t *testing.T) {
-	e1 := MyEntity1{}
-	e1.BasicEntity = NewBasic()
+	e1 := struct {
+		BasicEntity
+	}{
+		NewBasic(),
+	}
 
-	e2 := MyEntity1{}
-	e2.BasicEntity = NewBasic()
+	e2 := struct {
+		BasicEntity
+	}{
+		NewBasic(),
+	}
 
 	assert.NotEqual(t, e1.id, e2.id, "BasicEntity IDs should be unique")
 }
@@ -105,17 +159,127 @@ func TestCreateEntity(t *testing.T) {
 func TestChangeableComponents(t *testing.T) {
 	w := &World{}
 
-	sys1 := &MySystemOne{}
-	w.AddSystem(sys1)
+	w.AddSystem(&MySystemOne{})
 
-	e1 := MyEntity1{}
-	e1.BasicEntity = NewBasic()
+	e1 := struct {
+		BasicEntity
+		*MyComponent1
+	}{
+		NewBasic(),
+		&MyComponent1{},
+	}
 
-	sys1.Add(&e1.BasicEntity, &e1.MyComponent1)
+	w.AddEntity(&e1)
 
-	sys1.Update(0.125)
-
+	w.Update(0.125)
 	assert.NotZero(t, e1.MyComponent1.A, "MySystemOne should have been able to change the value of MyComponent1.A")
+}
+
+// TestSystemEntityFiltering checks that entities go into the right systems and the flags are obeyed
+func TestSystemEntityFiltering(t *testing.T) {
+	w := &World{}
+
+	w.AddSystem(&MySystemOne{})
+	w.AddSystem(&MySystemTwo{})
+	w.AddSystem(&MySystemOneTwo{})
+
+	e1 := struct {
+		BasicEntity
+		*MyComponent1
+	}{
+		NewBasic(),
+		&MyComponent1{},
+	}
+	w.AddEntity(&e1)
+
+	e2 := struct {
+		BasicEntity
+		*MyComponent2
+	}{
+		NewBasic(),
+		&MyComponent2{},
+	}
+	w.AddEntity(&e2)
+
+	e12 := struct {
+		BasicEntity
+		*MyComponent1
+		*MyComponent2
+	}{
+		NewBasic(),
+		&MyComponent1{},
+		&MyComponent2{},
+	}
+	w.AddEntity(&e12)
+
+	e12x1 := struct {
+		BasicEntity
+		*MyComponent1
+		*MyComponent2
+		*NotSystem1Component
+	}{
+		NewBasic(),
+		&MyComponent1{},
+		&MyComponent2{},
+		&NotSystem1Component{},
+	}
+	w.AddEntity(&e12x1)
+
+	e12x2 := struct {
+		BasicEntity
+		*MyComponent1
+		*MyComponent2
+		*NotSystem2Component
+	}{
+		NewBasic(),
+		&MyComponent1{},
+		&MyComponent2{},
+		&NotSystem2Component{},
+	}
+	w.AddEntity(&e12x2)
+
+	e12x1x2 := struct {
+		BasicEntity
+		*MyComponent1
+		*MyComponent2
+		*NotSystem1Component
+		*NotSystem2Component
+	}{
+		NewBasic(),
+		&MyComponent1{},
+		&MyComponent2{},
+		&NotSystem1Component{},
+		&NotSystem2Component{},
+	}
+	w.AddEntity(&e12x1x2)
+
+	w.Update(0.125)
+
+	assert.Equal(t, 1, e1.A, "e1 was not updated by system 1")
+	assert.Equal(t, 0, e1.B, "e1 was updated by system 12")
+
+	assert.Equal(t, 1, e2.C, "e2 was not updated by system 2")
+	assert.Equal(t, 0, e2.D, "e2 was updated by system 12")
+
+	assert.Equal(t, 1, e12.A, "e12 was not updated by system 1")
+	assert.Equal(t, 1, e12.B, "e12 was not updated by system 12")
+	assert.Equal(t, 1, e12.C, "e12 was not updated by system 2")
+	assert.Equal(t, 1, e12.D, "e12 was not updated by system 12")
+
+	assert.Equal(t, 0, e12x1.A, "e12x1 was updated by system 1")
+	assert.Equal(t, 1, e12x1.B, "e12x1 was not updated by system 12")
+	assert.Equal(t, 1, e12x1.C, "e12x1 was not updated by system 2")
+	assert.Equal(t, 1, e12x1.D, "e12x1 was not updated by system 12")
+
+	assert.Equal(t, 1, e12x2.A, "e12x2 was not updated by system 1")
+	assert.Equal(t, 1, e12x2.B, "e12x2 was not updated by system 12")
+	assert.Equal(t, 0, e12x2.C, "e12x2 was updated by system 2")
+	assert.Equal(t, 1, e12x2.D, "e12x2 was not updated by system 12")
+
+	assert.Equal(t, 0, e12x1x2.A, "e12x1x2 was updated by system 1")
+	assert.Equal(t, 1, e12x1x2.B, "e12x1x2 was not updated by system 12")
+	assert.Equal(t, 0, e12x1x2.C, "e12x1x2 was updated by system 2")
+	assert.Equal(t, 1, e12x1x2.D, "e12x1x2 was not updated by system 12")
 }
 
 // TestDelete tests a commonly used method for removing an entity from the list of entities
@@ -125,42 +289,104 @@ func TestDelete(t *testing.T) {
 	for j := 1; j < maxEntities; j++ {
 		w := &World{}
 
-		sys12 := &MySystemOneTwo{}
-		w.AddSystem(sys12)
+		w.AddSystem(&MySystemOneTwo{})
 
 		var entities []BasicEntity
 
 		// Add all of them
 		for i := 0; i < maxEntities; i++ {
-			e := MyEntity12{BasicEntity: NewBasic()}
-			sys12.Add(&e.BasicEntity, &e.MyComponent1, &e.MyComponent2)
+			e := struct{ BasicEntity }{NewBasic()}
+			w.AddEntity(&e)
 			entities = append(entities, e.BasicEntity) // in order to remove it without having a reference to e
 		}
 
-		before := len(sys12.entities)
+		before := len(w.entities)
 
 		// Attempt to remove j
-		sys12.Remove(entities[j])
+		w.RemoveEntity(entities[j])
 
-		assert.Len(t, sys12.entities, before-1, "MySystemOne should now have exactly one less Entity")
+		assert.Len(t, w.entities, before-1, "World should now have exactly one less Entity")
 	}
+}
+
+// TestAddRemoveUpdate tests if the add and remove work after an update
+func TestAddRemoveUpdate(t *testing.T) {
+	w := &World{}
+
+	w.AddSystem(&MySystemOne{})
+
+	e1 := struct {
+		BasicEntity
+		*MyComponent1
+		*MyComponent2
+	}{
+		NewBasic(),
+		&MyComponent1{},
+		&MyComponent2{},
+	}
+	w.AddEntity(&e1)
+
+	e2 := struct {
+		BasicEntity
+		*MyComponent1
+		*MyComponent2
+	}{
+		NewBasic(),
+		&MyComponent1{},
+		&MyComponent2{},
+	}
+	w.AddEntity(&e2)
+
+	w.Update(0.125)
+
+	w.AddSystem(&MySystemTwo{})
+
+	e3 := struct {
+		BasicEntity
+		*MyComponent1
+		*MyComponent2
+	}{
+		NewBasic(),
+		&MyComponent1{},
+		&MyComponent2{},
+	}
+	w.AddEntity(&e3)
+
+	w.Update(0.125)
+
+	w.RemoveEntity(&e2)
+
+	w.Update(0.125)
+
+	assert.Equal(t, 3, e1.A, "e1 was not updated by system 1 3 times")
+	assert.Equal(t, 2, e1.C, "e12 was not updated by system 2 2 times")
+
+	assert.Equal(t, 2, e2.A, "e2 was not updated by system 1 2 times")
+	assert.Equal(t, 1, e2.C, "e2 was not updated by system 2")
+
+	assert.Equal(t, 2, e3.A, "e3 was not updated by system 1 2 times")
+	assert.Equal(t, 2, e3.C, "e3 was not updated by system 2")
+}
+
+type MyEntity struct {
+	BasicEntity
 }
 
 // TestIdentifierInterface makes sure that my entity can be stored as an Identifier interface
 func TestIdentifierInterface(t *testing.T) {
-	e1 := MyEntity1{}
+	e1 := MyEntity{}
 	e1.BasicEntity = NewBasic()
 
-	var slice []Identifier = []Identifier{e1}
+	var slice = []Identifier{e1}
 
-	_, ok := slice[0].(MyEntity1)
-	assert.True(t, ok, "MyEntity1 should have been recoverable from the Identifier interface")
+	_, ok := slice[0].(MyEntity)
+	assert.True(t, ok, "MyEntity should have been recoverable from the Identifier interface")
 }
 
 func TestSortableIdentifierSlice(t *testing.T) {
-	e1 := MyEntity1{}
+	e1 := MyEntity{}
 	e1.BasicEntity = NewBasic()
-	e2 := MyEntity1{}
+	e2 := MyEntity{}
 	e2.BasicEntity = NewBasic()
 
 	var entities IdentifierSlice = []Identifier{e2, e1}
@@ -172,13 +398,16 @@ func TestSortableIdentifierSlice(t *testing.T) {
 func BenchmarkIdiomatic(b *testing.B) {
 	preload := func() {}
 	setup := func(w *World) {
-		sys12 := &MySystemOneTwo{}
-		w.AddSystem(sys12)
+		w.AddSystem(&MySystemOne{})
 
-		e1 := MyEntity1{}
-		e1.BasicEntity = NewBasic()
-
-		sys12.Add(&e1.BasicEntity, &e1.MyComponent1, nil)
+		e1 := struct {
+			BasicEntity
+			*MyComponent1
+		}{
+			NewBasic(),
+			&MyComponent1{},
+		}
+		w.AddEntity(&e1)
 	}
 
 	Bench(b, preload, setup)
@@ -187,13 +416,20 @@ func BenchmarkIdiomatic(b *testing.B) {
 func BenchmarkIdiomaticDouble(b *testing.B) {
 	preload := func() {}
 	setup := func(w *World) {
-		sys12 := &MySystemOneTwo{}
-		w.AddSystem(sys12)
+		w.AddSystem(&MySystemOneTwo{})
 
-		e12 := MyEntity12{}
+		e12 := struct {
+			BasicEntity
+			*MyComponent1
+			*MyComponent2
+		}{
+			NewBasic(),
+			&MyComponent1{},
+			&MyComponent2{},
+		}
 		e12.BasicEntity = NewBasic()
 
-		sys12.Add(&e12.BasicEntity, &e12.MyComponent1, &e12.MyComponent2)
+		w.AddEntity(&e12)
 	}
 
 	Bench(b, preload, setup)
